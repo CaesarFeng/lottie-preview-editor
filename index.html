@@ -1,0 +1,2123 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lottie 预览编辑器</title>
+    <script src="./lottie.min.js"></script>
+    <script src="./gif.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #16201c;
+        --muted: #66736d;
+        --line: #d8dfdb;
+        --panel: #f7f9f8;
+        --accent: #0d7c66;
+        --accent-strong: #095f4f;
+        --danger: #b42318;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--ink);
+        background: #eef3f0;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(300px, 360px);
+        min-height: 100vh;
+      }
+
+      .sidebar,
+      .inspector {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 24px;
+        background: var(--panel);
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+      }
+
+      .inspector {
+        border-left: 1px solid var(--line);
+        overflow: auto;
+      }
+
+      .brand {
+        display: grid;
+        gap: 5px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .drop-zone {
+        display: grid;
+        place-items: center;
+        min-height: 154px;
+        padding: 18px;
+        border: 1.5px dashed #9bb1a8;
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+        transition:
+          border-color 160ms ease,
+          background 160ms ease,
+          transform 160ms ease;
+      }
+
+      .drop-zone:hover,
+      .drop-zone.dragging {
+        border-color: var(--accent);
+        background: #edf8f4;
+        transform: translateY(-1px);
+      }
+
+      .drop-zone input {
+        display: none;
+      }
+
+      .drop-copy {
+        display: grid;
+        gap: 10px;
+        justify-items: center;
+        text-align: center;
+      }
+
+      .upload-icon {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border-radius: 8px;
+        color: #ffffff;
+        background: var(--accent);
+      }
+
+      .drop-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .drop-hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .control-group {
+        display: grid;
+        gap: 10px;
+      }
+
+      label {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .color-row,
+      .range-row,
+      .button-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      input[type="color"] {
+        width: 46px;
+        height: 38px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      input[type="range"] {
+        width: 100%;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      textarea {
+        height: 38px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #ffffff;
+        font: inherit;
+      }
+
+      textarea {
+        display: block;
+        width: 100%;
+        min-height: 118px;
+        padding: 11px 12px;
+        resize: vertical;
+        line-height: 1.45;
+      }
+
+      input[type="range"] {
+        accent-color: var(--accent);
+      }
+
+      .inline-row {
+        display: grid;
+        grid-template-columns: 1fr 92px;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .checkbox-row input {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--accent);
+      }
+
+      .preset-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .preset-row button {
+        min-height: 32px;
+        padding: 0 10px;
+        font-size: 13px;
+      }
+
+      .color-list {
+        display: grid;
+        gap: 12px;
+        max-height: min(42vh, 360px);
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .panel-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .panel-title {
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .panel-count {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .layer-list {
+        display: grid;
+        gap: 8px;
+        min-height: 160px;
+        max-height: calc(100vh - 390px);
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .layer-item {
+        display: grid;
+        grid-template-columns: 22px minmax(0, 1fr);
+        align-items: center;
+        gap: 9px;
+        min-height: 42px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: grab;
+      }
+
+      .layer-item:active {
+        cursor: grabbing;
+      }
+
+      .layer-item.selected {
+        border-color: var(--accent);
+        background: #edf8f4;
+      }
+
+      .layer-item.drag-over {
+        box-shadow: inset 0 2px 0 var(--accent);
+      }
+
+      .layer-handle {
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1;
+      }
+
+      .layer-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .layer-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .layer-meta {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .selected-layer {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .color-group {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #ffffff;
+        overflow: visible;
+      }
+
+      .color-group-title {
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .color-control {
+        display: grid;
+        gap: 0;
+      }
+
+      .color-control + .color-control {
+        border-top: 1px solid var(--line);
+      }
+
+      .color-control-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 82px 30px 24px;
+        align-items: center;
+        gap: 8px;
+        min-height: 48px;
+        padding: 8px 10px;
+        background: #f3f6f4;
+      }
+
+      .color-control-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .color-opacity {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .color-action {
+        min-width: 0;
+        width: 24px;
+        height: 24px;
+        min-height: 24px;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        color: var(--muted);
+        background: transparent;
+        font-size: 17px;
+      }
+
+      .color-action:hover {
+        color: var(--ink);
+        border-color: transparent;
+        background: #e7ece9;
+      }
+
+      .swatch {
+        position: relative;
+        flex: 0 0 auto;
+        width: 22px;
+        height: 22px;
+        border: 1px solid rgba(20, 33, 28, 0.18);
+        border-radius: 5px;
+        overflow: hidden;
+        background: #ffffff;
+      }
+
+      .swatch input[type="color"] {
+        position: absolute;
+        inset: -4px;
+        width: calc(100% + 8px);
+        height: calc(100% + 8px);
+        padding: 0;
+        border: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .swatch-fill {
+        position: absolute;
+        inset: 0;
+      }
+
+      .color-popover {
+        position: fixed;
+        z-index: 20;
+        display: grid;
+        width: 360px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #ffffff;
+        box-shadow: 0 18px 48px rgba(20, 33, 28, 0.18);
+      }
+
+      .popover-tabs {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        min-height: 40px;
+        padding: 0 8px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .popover-close {
+        width: 28px;
+        min-width: 28px;
+        height: 28px;
+        min-height: 28px;
+        padding: 0;
+        border: 0;
+        color: var(--ink);
+        background: transparent;
+        font-size: 24px;
+        font-weight: 400;
+      }
+
+      .popover-close:hover {
+        border-color: transparent;
+        background: #eef3f0;
+      }
+
+      .gradient-editor,
+      .solid-editor {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+      }
+
+      .gradient-type {
+        width: 130px;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: var(--ink);
+        background: #ffffff;
+        font: inherit;
+      }
+
+      .gradient-bar {
+        position: relative;
+        height: 36px;
+        margin: 6px 0 8px;
+        border: 1px solid #e5e5e5;
+        border-radius: 7px;
+        background: #00b56f;
+      }
+
+      .gradient-stop-marker {
+        position: absolute;
+        top: -10px;
+        width: 28px;
+        height: 28px;
+        border: 6px solid #1686f7;
+        border-radius: 8px;
+        background: var(--stop-color);
+        box-shadow: 0 5px 12px rgba(20, 33, 28, 0.14);
+        transform: translateX(-50%);
+        cursor: pointer;
+      }
+
+      .gradient-stop-marker:not(.selected) {
+        border-color: #d2dad6;
+      }
+
+      .popover-section-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+      }
+
+      .stop-list {
+        display: grid;
+        gap: 6px;
+        margin: 0 -12px -12px;
+      }
+
+      .stop-row {
+        display: grid;
+        grid-template-columns: 26px minmax(0, 1fr) 66px;
+        align-items: center;
+        gap: 7px;
+        min-height: 42px;
+        padding: 0 12px;
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      .stop-row.selected {
+        background: #e6eef9;
+      }
+
+      .mini-input {
+        width: 100%;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid transparent;
+        border-radius: 7px;
+        color: var(--ink);
+        background: #ffffff;
+        font: inherit;
+      }
+
+      .color-popover input[type="text"].mini-input {
+        height: 32px;
+        border-color: var(--line);
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      .mini-input.hex-input {
+        text-transform: uppercase;
+      }
+
+      .mini-input.percent-input {
+        text-align: right;
+      }
+
+      .picker-panel {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border-top: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .color-field {
+        position: relative;
+        height: 160px;
+        border-radius: 6px;
+        background:
+          linear-gradient(0deg, #000000, transparent),
+          linear-gradient(90deg, #ffffff, hsl(var(--picker-hue), 100%, 50%));
+      }
+
+      .field-thumb,
+      .slider-thumb {
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border: 3px solid #ffffff;
+        border-radius: 999px;
+        box-shadow: 0 1px 7px rgba(0, 0, 0, 0.45);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+      }
+
+      .picker-slider {
+        position: relative;
+        height: 18px;
+        border-radius: 999px;
+      }
+
+      .hue-slider {
+        background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+      }
+
+      .alpha-slider {
+        background:
+          linear-gradient(45deg, #d7d7d7 25%, transparent 25%),
+          linear-gradient(-45deg, #d7d7d7 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #d7d7d7 75%),
+          linear-gradient(-45deg, transparent 75%, #d7d7d7 75%),
+          linear-gradient(90deg, rgba(var(--picker-rgb), 0), rgba(var(--picker-rgb), 1));
+        background-position:
+          0 0,
+          0 6px,
+          6px -6px,
+          -6px 0,
+          0 0;
+        background-size:
+          12px 12px,
+          12px 12px,
+          12px 12px,
+          12px 12px,
+          100% 100%;
+      }
+
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 38px;
+        padding: 0 13px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.primary {
+        border-color: var(--accent);
+        color: #ffffff;
+        background: var(--accent);
+      }
+
+      button:hover {
+        border-color: var(--accent-strong);
+      }
+
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .meta {
+        display: grid;
+        gap: 8px;
+        margin-top: auto;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .meta strong {
+        color: var(--ink);
+      }
+
+      .preview-area {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+        background: #eef3f0;
+      }
+
+      .preview-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 70px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .file-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 800;
+      }
+
+      .status {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .status.error {
+        color: var(--danger);
+        font-weight: 700;
+      }
+
+      .stage-wrap {
+        display: grid;
+        position: relative;
+        min-height: 0;
+        padding: 28px;
+        background:
+          linear-gradient(45deg, rgba(0, 0, 0, 0.035) 25%, transparent 25%),
+          linear-gradient(-45deg, rgba(0, 0, 0, 0.035) 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, rgba(0, 0, 0, 0.035) 75%),
+          linear-gradient(-45deg, transparent 75%, rgba(0, 0, 0, 0.035) 75%);
+        background-position:
+          0 0,
+          0 10px,
+          10px -10px,
+          -10px 0;
+        background-size: 20px 20px;
+      }
+
+      .stage {
+        display: grid;
+        place-items: center;
+        min-width: 0;
+        min-height: 0;
+        border: 1px solid rgba(20, 33, 28, 0.12);
+        border-radius: 8px;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      #animation {
+        display: none;
+        width: min(86vw, 760px);
+        height: min(72vh, 620px);
+        max-width: 100%;
+        max-height: 100%;
+      }
+
+      .empty-state {
+        display: grid;
+        gap: 10px;
+        justify-items: center;
+        padding: 26px;
+        color: var(--muted);
+        text-align: center;
+      }
+
+      .empty-state strong {
+        color: var(--ink);
+        font-size: 18px;
+      }
+
+      .preview-controls {
+        position: absolute;
+        left: 50%;
+        bottom: 28px;
+        display: none;
+        grid-template-columns: auto minmax(260px, 520px);
+        align-items: center;
+        gap: 18px;
+        width: auto;
+        max-width: min(760px, calc(100% - 56px));
+        padding: 10px 12px;
+        border: 1px solid rgba(20, 33, 28, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: 0 8px 24px rgba(20, 33, 28, 0.1);
+        backdrop-filter: blur(14px);
+        transform: translateX(-50%);
+      }
+
+      .preview-controls.visible {
+        display: grid;
+      }
+
+      .icon-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .icon-button {
+        width: 36px;
+        min-width: 36px;
+        height: 36px;
+        min-height: 36px;
+        padding: 0;
+        border-radius: 8px;
+      }
+
+      .icon-button svg {
+        width: 19px;
+        height: 19px;
+      }
+
+      .progress-wrap {
+        display: grid;
+        grid-template-columns: minmax(220px, 480px) 74px;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .frame-readout {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 820px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .inspector {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+        .layer-list {
+          max-height: 280px;
+        }
+
+        .meta {
+          margin-top: 0;
+        }
+
+        .preview-topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .button-row {
+          flex-wrap: wrap;
+        }
+
+        .stage-wrap {
+          min-height: 430px;
+          padding: 16px;
+        }
+
+        .preview-controls {
+          grid-template-columns: 1fr;
+          bottom: 16px;
+          width: calc(100% - 32px);
+        }
+
+        .icon-row {
+          justify-content: center;
+        }
+
+        .progress-wrap {
+          grid-template-columns: 1fr 66px;
+        }
+
+        #animation {
+          width: 100%;
+          height: 390px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>Lottie 预览编辑器</h1>
+          <p class="subtitle">上传 Lottie JSON 文件，预览、编辑并导出配置或 GIF。</p>
+        </div>
+
+        <label class="drop-zone" id="dropZone">
+          <input id="fileInput" type="file" accept=".json,application/json" />
+          <span class="drop-copy">
+            <span class="upload-icon" aria-hidden="true">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <path d="M12 16V4m0 0 5 5m-5-5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M20 16.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+            </span>
+            <span class="drop-title">选择、拖入或粘贴 JSON 文件</span>
+            <span class="drop-hint">支持从文件夹复制 JSON 文件后，在此页面直接粘贴导入。</span>
+          </span>
+        </label>
+
+        <section class="control-group">
+          <div class="panel-head">
+            <span class="panel-title">图层</span>
+            <span class="panel-count" id="layerCount">0</span>
+          </div>
+          <div class="layer-list" id="layerList">
+            <p class="drop-hint">上传 JSON 后会在这里显示图层，可拖拽调整上下顺序。</p>
+          </div>
+        </section>
+
+        <div class="meta" id="meta">
+          <span><strong>尺寸：</strong>等待文件</span>
+          <span><strong>帧率：</strong>等待文件</span>
+          <span><strong>时长：</strong>等待文件</span>
+        </div>
+      </aside>
+
+      <section class="preview-area">
+        <header class="preview-topbar">
+          <div class="file-name" id="fileName">未选择文件</div>
+          <div class="status" id="status">准备预览</div>
+        </header>
+
+        <div class="stage-wrap">
+          <div class="stage" id="stage">
+            <div class="empty-state" id="emptyState">
+              <strong>动画会显示在这里</strong>
+              <span>先从左侧上传一个 Lottie JSON 文件。</span>
+            </div>
+            <div id="animation" aria-label="Lottie 预览编辑"></div>
+          </div>
+          <div class="preview-controls" id="previewControls" aria-label="播放与导出控制">
+            <div class="icon-row">
+              <button class="primary icon-button" id="playPause" disabled type="button" title="暂停/播放" aria-label="暂停或播放">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path id="playPauseIcon" d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+                </svg>
+              </button>
+              <button class="icon-button" id="restart" disabled type="button" title="重播" aria-label="重播">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M7.2 7.6A7 7 0 1 1 5 12.7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+                  <path d="M7.4 3.9v4.2H3.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
+            </div>
+            <div class="progress-wrap">
+              <input class="frame-progress" id="frameProgress" type="range" min="0" max="0" step="1" value="0" disabled />
+              <div class="frame-readout" id="frameReadout">0 / 0 帧</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="inspector">
+        <section class="control-group">
+          <div class="panel-head">
+            <span class="panel-title">属性</span>
+            <span class="selected-layer" id="selectedLayerName">未选择图层</span>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label for="bgColor">预览背景色</label>
+          <div class="color-row">
+            <input id="bgColor" type="color" value="#ffffff" />
+            <input id="bgText" type="text" value="transparent" aria-label="背景色十六进制值" />
+          </div>
+          <div class="preset-row" aria-label="背景色快捷选择">
+            <button class="bgPreset" data-bg="transparent" type="button">透明</button>
+            <button class="bgPreset" data-bg="#ffffff" type="button">白色</button>
+            <button class="bgPreset" data-bg="#000000" type="button">黑色</button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label>颜色</label>
+          <div class="color-list" id="colorList">
+            <p class="drop-hint">选中左侧图层后，会按形状显示填充、描边和渐变色标。</p>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label for="speed">播放速度 <span id="speedValue">1.0x</span></label>
+          <div class="range-row">
+            <input id="speed" type="range" min="0.25" max="3" step="0.25" value="1" />
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label for="loopCount">播放次数后停止</label>
+          <div class="inline-row">
+            <input id="loopCount" type="range" min="0" max="10" step="1" value="0" />
+            <input id="loopCountNumber" type="number" min="0" max="999" step="1" value="0" />
+          </div>
+          <p class="drop-hint">0 表示无限循环；大于 0 时播放指定次数后停在最后一帧。</p>
+        </section>
+
+        <section class="control-group">
+          <span class="visually-hidden" id="exportControlsLabel">保存与导出</span>
+          <div class="button-row" aria-labelledby="exportControlsLabel">
+            <button id="saveJson" disabled type="button">保存 JSON</button>
+            <button id="exportGif" disabled type="button">导出 GIF</button>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script>
+      const fileInput = document.querySelector("#fileInput");
+      const dropZone = document.querySelector("#dropZone");
+      const stage = document.querySelector("#stage");
+      const animationContainer = document.querySelector("#animation");
+      const emptyState = document.querySelector("#emptyState");
+      const fileName = document.querySelector("#fileName");
+      const statusText = document.querySelector("#status");
+      const meta = document.querySelector("#meta");
+      const layerList = document.querySelector("#layerList");
+      const layerCount = document.querySelector("#layerCount");
+      const selectedLayerName = document.querySelector("#selectedLayerName");
+      const bgColor = document.querySelector("#bgColor");
+      const bgText = document.querySelector("#bgText");
+      const bgPresets = document.querySelectorAll(".bgPreset");
+      const speed = document.querySelector("#speed");
+      const speedValue = document.querySelector("#speedValue");
+      const loopCount = document.querySelector("#loopCount");
+      const loopCountNumber = document.querySelector("#loopCountNumber");
+      const colorList = document.querySelector("#colorList");
+      const playPause = document.querySelector("#playPause");
+      const restart = document.querySelector("#restart");
+      const saveJson = document.querySelector("#saveJson");
+      const exportGif = document.querySelector("#exportGif");
+      const previewControls = document.querySelector("#previewControls");
+      const frameProgress = document.querySelector("#frameProgress");
+      const frameReadout = document.querySelector("#frameReadout");
+      const playPauseIcon = document.querySelector("#playPauseIcon");
+
+      let animation = null;
+      let currentJson = null;
+      let currentFileBaseName = "animation";
+      let isPlaying = true;
+      let completedLoops = 0;
+      let isSeeking = false;
+      let progressRaf = null;
+      let colorGroups = [];
+      let selectedLayerIndex = null;
+      let draggedLayerIndex = null;
+      let activeColorPicker = null;
+
+      function setStatus(message, isError = false) {
+        statusText.textContent = message;
+        statusText.classList.toggle("error", isError);
+      }
+
+      function setControls(enabled) {
+        playPause.disabled = !enabled;
+        restart.disabled = !enabled;
+        saveJson.disabled = !enabled;
+        exportGif.disabled = !enabled;
+        frameProgress.disabled = !enabled;
+        previewControls.classList.toggle("visible", enabled);
+      }
+
+      function setPlayIcon(playing) {
+        playPauseIcon.setAttribute(
+          "d",
+          playing ? "M8 5v14M16 5v14" : "M8 5v14l11-7-11-7Z",
+        );
+        playPause.setAttribute("aria-label", playing ? "暂停" : "播放");
+        playPause.setAttribute("title", playing ? "暂停" : "播放");
+      }
+
+      function togglePlayback() {
+        if (!animation) return;
+
+        if (isPlaying) {
+          animation.pause();
+          isPlaying = false;
+          setPlayIcon(false);
+          setStatus("已暂停");
+        } else {
+          animation.play();
+          isPlaying = true;
+          setPlayIcon(true);
+          setStatus("正在播放");
+        }
+      }
+
+      function stopProgressLoop() {
+        if (progressRaf) cancelAnimationFrame(progressRaf);
+        progressRaf = null;
+      }
+
+      function updateFrameProgress() {
+        if (!animation || isSeeking) return;
+        const total = Math.max(1, Math.round(animation.totalFrames || 0));
+        const frame = Math.min(total - 1, Math.max(0, Math.round(animation.currentFrame || 0)));
+        frameProgress.max = String(total - 1);
+        frameProgress.value = String(frame);
+        frameReadout.textContent = `${frame + 1} / ${total} 帧`;
+      }
+
+      function startProgressLoop() {
+        stopProgressLoop();
+        const tick = () => {
+          updateFrameProgress();
+          progressRaf = requestAnimationFrame(tick);
+        };
+        tick();
+      }
+
+      function updateBackground(value) {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === "transparent") {
+          stage.style.backgroundColor = "transparent";
+          bgText.value = "transparent";
+          return;
+        }
+
+        if (!/^#[0-9a-fA-F]{6}$/.test(normalized)) return;
+        stage.style.backgroundColor = normalized;
+        bgColor.value = normalized;
+        bgText.value = normalized;
+      }
+
+      function normalizeLoopCount(value) {
+        const count = Number.parseInt(value, 10);
+        if (!Number.isFinite(count) || count < 0) return 0;
+        return Math.min(count, 999);
+      }
+
+      function updateLoopControls(value) {
+        const count = normalizeLoopCount(value);
+        loopCountNumber.value = String(count);
+        loopCount.value = String(Math.min(count, Number(loopCount.max)));
+        if (animation) applyPlaybackSettings();
+      }
+
+      function applyPlaybackSettings() {
+        if (!animation) return;
+        completedLoops = 0;
+        animation.loop = normalizeLoopCount(loopCountNumber.value) === 0;
+        animation.setSpeed(Number(speed.value));
+      }
+
+      function updateMeta(data) {
+        const width = data.w || "-";
+        const height = data.h || "-";
+        const frameRate = data.fr ? Number(data.fr).toFixed(2).replace(/\.00$/, "") : "-";
+        const duration =
+          data.op && data.ip !== undefined && data.fr
+            ? `${((data.op - data.ip) / data.fr).toFixed(2)} 秒`
+            : "-";
+
+        meta.innerHTML = `
+          <span><strong>尺寸：</strong>${width} × ${height}</span>
+          <span><strong>帧率：</strong>${frameRate}</span>
+          <span><strong>时长：</strong>${duration}</span>
+        `;
+      }
+
+      function layerTitle(layer, index) {
+        return layer?.nm || `图层 ${index + 1}`;
+      }
+
+      function layerType(layer) {
+        const types = {
+          0: "预合成",
+          1: "纯色",
+          2: "图片",
+          3: "空对象",
+          4: "形状",
+          5: "文字",
+        };
+        return types[layer?.ty] || "图层";
+      }
+
+      function selectLayer(index) {
+        if (!currentJson?.layers?.length) return;
+        closeColorPicker();
+        selectedLayerIndex = Math.max(0, Math.min(index, currentJson.layers.length - 1));
+        selectedLayerName.textContent = layerTitle(currentJson.layers[selectedLayerIndex], selectedLayerIndex);
+        renderLayerList();
+        renderColorControls(currentJson);
+      }
+
+      function moveLayer(fromIndex, toIndex) {
+        if (
+          !currentJson?.layers ||
+          !Number.isInteger(fromIndex) ||
+          !Number.isInteger(toIndex) ||
+          fromIndex === toIndex
+        ) {
+          return;
+        }
+        const layers = currentJson.layers;
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= layers.length || toIndex >= layers.length) return;
+        const [layer] = layers.splice(fromIndex, 1);
+        closeColorPicker();
+        layers.splice(toIndex, 0, layer);
+        selectedLayerIndex = toIndex;
+        renderLayerList();
+        renderAnimation(currentJson, { preserveFrame: true, skipColorControls: true });
+        renderColorControls(currentJson);
+        setStatus("图层顺序已更新");
+      }
+
+      function renderLayerList() {
+        layerList.innerHTML = "";
+        const layers = currentJson?.layers || [];
+        layerCount.textContent = String(layers.length);
+
+        if (!layers.length) {
+          selectedLayerName.textContent = "未选择图层";
+          layerList.innerHTML = '<p class="drop-hint">上传 JSON 后会在这里显示图层，可拖拽调整上下顺序。</p>';
+          return;
+        }
+
+        if (selectedLayerIndex === null || selectedLayerIndex >= layers.length) selectedLayerIndex = 0;
+        selectedLayerName.textContent = layerTitle(layers[selectedLayerIndex], selectedLayerIndex);
+
+        layers.forEach((layer, index) => {
+          const item = document.createElement("button");
+          item.className = `layer-item${index === selectedLayerIndex ? " selected" : ""}`;
+          item.type = "button";
+          item.draggable = true;
+          item.dataset.index = String(index);
+
+          const handle = document.createElement("span");
+          handle.className = "layer-handle";
+          handle.setAttribute("aria-hidden", "true");
+          handle.textContent = "⋮⋮";
+
+          const copy = document.createElement("span");
+          copy.className = "layer-copy";
+
+          const name = document.createElement("span");
+          name.className = "layer-name";
+          name.textContent = layerTitle(layer, index);
+
+          const detail = document.createElement("span");
+          detail.className = "layer-meta";
+          detail.textContent = layerType(layer);
+
+          copy.append(name, detail);
+          item.append(handle, copy);
+
+          item.addEventListener("click", () => selectLayer(index));
+          item.addEventListener("dragstart", (event) => {
+            draggedLayerIndex = index;
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", String(index));
+          });
+          item.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            item.classList.add("drag-over");
+          });
+          item.addEventListener("dragleave", () => item.classList.remove("drag-over"));
+          item.addEventListener("drop", (event) => {
+            event.preventDefault();
+            item.classList.remove("drag-over");
+            const fromIndex = draggedLayerIndex ?? Number(event.dataTransfer.getData("text/plain"));
+            moveLayer(fromIndex, index);
+            draggedLayerIndex = null;
+          });
+          item.addEventListener("dragend", () => {
+            draggedLayerIndex = null;
+            item.classList.remove("drag-over");
+          });
+
+          layerList.append(item);
+        });
+      }
+
+      function rgbToHex(rgb) {
+        return `#${rgb
+          .slice(0, 3)
+          .map((value) => {
+            const n = Math.max(0, Math.min(255, Math.round(Number(value) * 255)));
+            return n.toString(16).padStart(2, "0");
+          })
+          .join("")}`;
+      }
+
+      function hexToRgb(hex) {
+        const clean = hex.replace("#", "");
+        return [
+          Number.parseInt(clean.slice(0, 2), 16) / 255,
+          Number.parseInt(clean.slice(2, 4), 16) / 255,
+          Number.parseInt(clean.slice(4, 6), 16) / 255,
+        ];
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+      }
+
+      function rgbToHsv(rgb) {
+        const [r, g, b] = rgb;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const delta = max - min;
+        let h = 0;
+
+        if (delta !== 0) {
+          if (max === r) h = ((g - b) / delta) % 6;
+          else if (max === g) h = (b - r) / delta + 2;
+          else h = (r - g) / delta + 4;
+          h *= 60;
+          if (h < 0) h += 360;
+        }
+
+        return {
+          h,
+          s: max === 0 ? 0 : delta / max,
+          v: max,
+        };
+      }
+
+      function hsvToRgb({ h, s, v }) {
+        const c = v * s;
+        const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+        const m = v - c;
+        let rgb = [0, 0, 0];
+
+        if (h < 60) rgb = [c, x, 0];
+        else if (h < 120) rgb = [x, c, 0];
+        else if (h < 180) rgb = [0, c, x];
+        else if (h < 240) rgb = [0, x, c];
+        else if (h < 300) rgb = [x, 0, c];
+        else rgb = [c, 0, x];
+
+        return rgb.map((value) => value + m);
+      }
+
+      function percentValue(value) {
+        const parsed = Number.parseFloat(String(value).replace("%", ""));
+        return Number.isFinite(parsed) ? clamp(parsed, 0, 100) : 100;
+      }
+
+      function readablePath(parts) {
+        return parts.filter(Boolean).slice(-3).join(" / ") || "未命名形状";
+      }
+
+      function findColorGroups(data) {
+        const groups = new Map();
+        const root =
+          selectedLayerIndex === null || !data.layers?.[selectedLayerIndex]
+            ? data
+            : data.layers[selectedLayerIndex];
+        const rootPath = [];
+
+        function ensureGroup(name) {
+          if (!groups.has(name)) groups.set(name, []);
+          return groups.get(name);
+        }
+
+        function visit(node, path = []) {
+          if (!node || typeof node !== "object") return;
+
+          const nextPath = node.nm ? path.concat(node.nm) : path;
+          const groupName = readablePath(path);
+
+          if ((node.ty === "fl" || node.ty === "st") && node.c?.k && Array.isArray(node.c.k) && node.c.k.length >= 3) {
+            const opacityNode = node.o?.k !== undefined ? node.o : null;
+            ensureGroup(groupName).push({
+              kind: node.ty === "fl" ? "填充" : "描边",
+              name: node.nm || (node.ty === "fl" ? "fill" : "stroke"),
+              stops: [
+                {
+                  label: "颜色",
+                  get: () => node.c.k.slice(0, 3),
+                  getOpacity: () => {
+                    if (opacityNode) return Math.round(Number(opacityNode.k ?? 100));
+                    return Math.round(Number.isFinite(node.c.k[3]) ? node.c.k[3] * 100 : 100);
+                  },
+                  set: (rgb) => {
+                    node.c.k[0] = rgb[0];
+                    node.c.k[1] = rgb[1];
+                    node.c.k[2] = rgb[2];
+                  },
+                  setOpacity: (opacity) => {
+                    if (opacityNode) opacityNode.k = opacity;
+                    else node.c.k[3] = opacity / 100;
+                  },
+                },
+              ],
+            });
+          }
+
+          if ((node.ty === "gf" || node.ty === "gs") && node.g?.k?.k && Array.isArray(node.g.k.k)) {
+            const stopCount = Number(node.g.p || 0);
+            const stops = [];
+            const opacityOffset = stopCount * 4;
+            const ensureOpacityStops = () => {
+              while (node.g.k.k.length < opacityOffset + stopCount * 2) {
+                const i = (node.g.k.k.length - opacityOffset) / 2;
+                node.g.k.k.push(node.g.k.k[i * 4] ?? 0, 100);
+              }
+            };
+            for (let i = 0; i < stopCount; i += 1) {
+              const offset = i * 4;
+              const alphaOffset = opacityOffset + i * 2 + 1;
+              stops.push({
+                label: `色标 ${i + 1}`,
+                position: node.g.k.k[offset],
+                get: () => node.g.k.k.slice(offset + 1, offset + 4),
+                getOpacity: () => {
+                  ensureOpacityStops();
+                  return Math.round(Number(node.g.k.k[alphaOffset] ?? 100));
+                },
+                set: (rgb) => {
+                  node.g.k.k[offset + 1] = rgb[0];
+                  node.g.k.k[offset + 2] = rgb[1];
+                  node.g.k.k[offset + 3] = rgb[2];
+                },
+                setOpacity: (opacity) => {
+                  ensureOpacityStops();
+                  node.g.k.k[alphaOffset] = opacity;
+                },
+              });
+            }
+
+            ensureGroup(groupName).push({
+              kind: node.ty === "gf" ? "渐变填充" : "渐变描边",
+              name: node.nm || "gradient",
+              stops,
+            });
+          }
+
+          if (Array.isArray(node)) {
+            node.forEach((child) => visit(child, nextPath));
+          } else {
+            Object.values(node).forEach((child) => visit(child, nextPath));
+          }
+        }
+
+        visit(root, rootPath);
+        return [...groups.entries()]
+          .map(([name, controls]) => ({ name, controls }))
+          .filter((group) => group.controls.length);
+      }
+
+      function rerenderAfterColorChange() {
+        renderAnimation(currentJson, { preserveFrame: true, skipColorControls: true });
+      }
+
+      function closeColorPicker() {
+        activeColorPicker?.remove();
+        activeColorPicker = null;
+      }
+
+      function createSwatch(hex, onChange) {
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+
+        const fill = document.createElement("span");
+        fill.className = "swatch-fill";
+        fill.style.background = hex;
+
+        const input = document.createElement("input");
+        input.type = "color";
+        input.value = hex;
+        input.addEventListener("input", () => {
+          fill.style.background = input.value;
+          onChange(input.value);
+        });
+
+        swatch.append(fill, input);
+        return { swatch, fill, input };
+      }
+
+      function createPassiveSwatch(hex, background = hex) {
+        const swatch = document.createElement("span");
+        swatch.className = "swatch";
+        const fill = document.createElement("span");
+        fill.className = "swatch-fill";
+        fill.style.background = background;
+        swatch.append(fill);
+        return swatch;
+      }
+
+      function createIconButton(label, text) {
+        const button = document.createElement("button");
+        button.className = "color-action";
+        button.type = "button";
+        button.title = label;
+        button.setAttribute("aria-label", label);
+        button.textContent = text;
+        return button;
+      }
+
+      function isGradientControl(control) {
+        return control.kind.includes("渐变");
+      }
+
+      function gradientPreview(control) {
+        const stops = control.stops.map((stop) => {
+          const position = stop.position === undefined ? 0 : Math.round(stop.position * 100);
+          return `${rgbToHex(stop.get())} ${position}%`;
+        });
+        return `linear-gradient(90deg, ${stops.join(", ")})`;
+      }
+
+      function openColorPicker(anchor, control, stopIndex = 0) {
+        closeColorPicker();
+        const stop = control.stops[stopIndex];
+        const gradient = isGradientControl(control);
+        const rect = anchor.getBoundingClientRect();
+        const inspectorRect = document.querySelector(".inspector").getBoundingClientRect();
+        const popoverWidth = 360;
+        const popover = document.createElement("div");
+        popover.className = "color-popover";
+        popover.style.top = `${Math.max(12, Math.min(window.innerHeight - 560, rect.bottom + 8))}px`;
+        popover.style.left = `${Math.max(16, inspectorRect.left - popoverWidth - 22)}px`;
+
+        let pickerState = {
+          selectedStop: stopIndex,
+          hsv: rgbToHsv(stop.get()),
+          opacity: stop.getOpacity(),
+        };
+
+        function selectedStop() {
+          return control.stops[pickerState.selectedStop];
+        }
+
+        function syncStateFromStop() {
+          pickerState.hsv = rgbToHsv(selectedStop().get());
+          pickerState.opacity = selectedStop().getOpacity();
+        }
+
+        function writeSelectedColor() {
+          selectedStop().set(hsvToRgb(pickerState.hsv));
+          selectedStop().setOpacity?.(pickerState.opacity);
+          rerenderAfterColorChange();
+          const headSwatch = anchor.querySelector(".swatch-fill");
+          const headOpacity = anchor.querySelector(".color-opacity");
+          if (headSwatch) headSwatch.style.background = gradient ? gradientPreview(control) : rgbToHex(control.stops[0].get());
+          if (headOpacity) headOpacity.textContent = `${control.stops[0].getOpacity()} %`;
+          paint();
+        }
+
+        function pointerPercent(event, el) {
+          const box = el.getBoundingClientRect();
+          return {
+            x: clamp((event.clientX - box.left) / box.width, 0, 1),
+            y: clamp((event.clientY - box.top) / box.height, 0, 1),
+          };
+        }
+
+        function bindDrag(el, onMove) {
+          el.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            el.setPointerCapture(event.pointerId);
+            onMove(event);
+          });
+          el.addEventListener("pointermove", (event) => {
+            if (event.buttons !== 1) return;
+            onMove(event);
+          });
+        }
+
+        function paint() {
+          const rgb = hsvToRgb(pickerState.hsv);
+          const hex = rgbToHex(rgb).replace("#", "").toUpperCase();
+          popover.style.setProperty("--picker-hue", pickerState.hsv.h);
+          popover.style.setProperty("--picker-rgb", rgb.map((value) => Math.round(value * 255)).join(", "));
+
+          const fieldThumb = popover.querySelector(".field-thumb");
+          const hueThumb = popover.querySelector(".hue-slider .slider-thumb");
+          const alphaThumb = popover.querySelector(".alpha-slider .slider-thumb");
+          if (fieldThumb) {
+            fieldThumb.style.left = `${pickerState.hsv.s * 100}%`;
+            fieldThumb.style.top = `${(1 - pickerState.hsv.v) * 100}%`;
+          }
+          if (hueThumb) hueThumb.style.left = `${(pickerState.hsv.h / 360) * 100}%`;
+          if (alphaThumb) alphaThumb.style.left = `${pickerState.opacity}%`;
+
+          popover.querySelectorAll(".stop-row[data-stop-index]").forEach((row) => {
+            const index = Number(row.dataset.stopIndex);
+            const rowStop = control.stops[index];
+            row.classList.toggle("selected", index === pickerState.selectedStop);
+            row.querySelector(".swatch-fill").style.background = rgbToHex(rowStop.get());
+            row.querySelector(".hex-input").value = rgbToHex(rowStop.get()).replace("#", "").toUpperCase();
+            row.querySelector(".percent-input").value = String(rowStop.getOpacity());
+          });
+
+          const bar = popover.querySelector(".gradient-bar");
+          if (bar) bar.style.background = gradientPreview(control);
+          popover.querySelectorAll(".gradient-stop-marker").forEach((marker) => {
+            const index = Number(marker.dataset.stopIndex);
+            marker.style.setProperty("--stop-color", rgbToHex(control.stops[index].get()));
+            marker.classList.toggle("selected", index === pickerState.selectedStop);
+          });
+        }
+
+        const tabs = document.createElement("div");
+        tabs.className = "popover-tabs";
+        tabs.innerHTML = "<span></span>";
+        const close = document.createElement("button");
+        close.className = "popover-close";
+        close.type = "button";
+        close.textContent = "×";
+        close.addEventListener("click", closeColorPicker);
+        tabs.append(close);
+        popover.append(tabs);
+
+        const editor = document.createElement("div");
+        editor.className = gradient ? "gradient-editor" : "solid-editor";
+        const type = document.createElement("button");
+        type.className = "gradient-type";
+        type.type = "button";
+        type.textContent = gradient ? "线性渐变⌄" : "填充⌄";
+        if (gradient) {
+          const bar = document.createElement("div");
+          bar.className = "gradient-bar";
+          control.stops.forEach((item, index) => {
+            const marker = document.createElement("button");
+            marker.className = "gradient-stop-marker";
+            marker.type = "button";
+            marker.dataset.stopIndex = String(index);
+            marker.style.left = `${Math.round((item.position ?? index / Math.max(1, control.stops.length - 1)) * 100)}%`;
+            marker.addEventListener("click", () => {
+              pickerState.selectedStop = index;
+              syncStateFromStop();
+              paint();
+            });
+            bar.append(marker);
+          });
+          const title = document.createElement("div");
+          title.className = "popover-section-title";
+          title.textContent = "断点";
+          const stopList = document.createElement("div");
+          stopList.className = "stop-list";
+
+          control.stops.forEach((item, index) => {
+            const row = document.createElement("div");
+            row.className = "stop-row";
+            row.dataset.stopIndex = String(index);
+            const swatch = createPassiveSwatch(rgbToHex(item.get()));
+            const hex = document.createElement("input");
+            hex.className = "mini-input hex-input";
+            hex.type = "text";
+            const opacity = document.createElement("input");
+            opacity.className = "mini-input percent-input";
+            opacity.type = "text";
+            row.append(swatch, hex, opacity);
+            row.addEventListener("click", () => {
+              pickerState.selectedStop = index;
+              syncStateFromStop();
+              paint();
+            });
+            hex.addEventListener("change", () => {
+              const value = `#${hex.value.replace("#", "")}`;
+              if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                item.set(hexToRgb(value));
+                syncStateFromStop();
+                writeSelectedColor();
+              }
+            });
+            opacity.addEventListener("change", () => {
+              item.setOpacity?.(percentValue(opacity.value));
+              syncStateFromStop();
+              writeSelectedColor();
+            });
+            stopList.append(row);
+          });
+
+          editor.append(type, bar, title, stopList);
+        } else {
+          editor.append(type);
+        }
+        popover.append(editor);
+
+        const picker = document.createElement("div");
+        picker.className = "picker-panel";
+        const field = document.createElement("div");
+        field.className = "color-field";
+        field.innerHTML = '<span class="field-thumb"></span>';
+        const hue = document.createElement("div");
+        hue.className = "picker-slider hue-slider";
+        hue.innerHTML = '<span class="slider-thumb"></span>';
+        const alpha = document.createElement("div");
+        alpha.className = "picker-slider alpha-slider";
+        alpha.innerHTML = '<span class="slider-thumb"></span>';
+
+        bindDrag(field, (event) => {
+          const point = pointerPercent(event, field);
+          pickerState.hsv.s = point.x;
+          pickerState.hsv.v = 1 - point.y;
+          writeSelectedColor();
+        });
+        bindDrag(hue, (event) => {
+          pickerState.hsv.h = pointerPercent(event, hue).x * 360;
+          writeSelectedColor();
+        });
+        bindDrag(alpha, (event) => {
+          pickerState.opacity = Math.round(pointerPercent(event, alpha).x * 100);
+          writeSelectedColor();
+        });
+
+        picker.append(field, hue, alpha);
+        popover.append(picker);
+        document.body.append(popover);
+        activeColorPicker = popover;
+
+        paint();
+      }
+
+      function renderColorControls(data) {
+        colorGroups = findColorGroups(data);
+        const controlCount = colorGroups.reduce((sum, group) => sum + group.controls.length, 0);
+        colorList.innerHTML = "";
+
+        if (!controlCount) {
+          colorList.innerHTML = '<p class="drop-hint">没有识别到可改色的形状填充、描边或渐变。</p>';
+          return;
+        }
+
+        colorGroups.forEach((group) => {
+          const groupEl = document.createElement("div");
+          groupEl.className = "color-group";
+
+          group.controls.forEach((control) => {
+            const controlEl = document.createElement("div");
+            controlEl.className = "color-control";
+            const gradient = isGradientControl(control);
+            const firstStop = control.stops[0];
+            const firstHex = rgbToHex(firstStop.get());
+
+            const head = document.createElement("div");
+            head.className = "color-control-head";
+            head.tabIndex = 0;
+            const controlName = document.createElement("div");
+            controlName.className = "color-control-name";
+            controlName.title = control.name;
+            controlName.append(
+              createPassiveSwatch(firstHex, gradient ? gradientPreview(control) : firstHex),
+              document.createTextNode(gradient ? "线性渐变" : firstHex.replace("#", "").toUpperCase()),
+            );
+
+            const opacity = document.createElement("div");
+            opacity.className = "color-opacity";
+            opacity.textContent = `${firstStop.getOpacity()} %`;
+
+            head.append(controlName, opacity, createIconButton("显示", "◉"), createIconButton("移除", "−"));
+            head.addEventListener("click", (event) => {
+              if (event.target.closest(".color-action")) return;
+              openColorPicker(head, control, 0);
+            });
+            head.addEventListener("keydown", (event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openColorPicker(head, control, 0);
+            });
+            controlEl.append(head);
+
+            groupEl.append(controlEl);
+          });
+
+          colorList.append(groupEl);
+        });
+      }
+
+      function renderAnimation(data, options = {}) {
+        const frameToRestore = options.preserveFrame && animation ? Math.round(animation.currentFrame || 0) : 0;
+        const wasPlaying = options.preserveFrame ? isPlaying : true;
+        if (animation) {
+          animation.destroy();
+          animation = null;
+        }
+        stopProgressLoop();
+
+        emptyState.style.display = "none";
+        animationContainer.style.display = "block";
+        animationContainer.innerHTML = "";
+        currentJson = data;
+        animation = lottie.loadAnimation({
+          container: animationContainer,
+          renderer: "svg",
+          loop: normalizeLoopCount(loopCountNumber.value) === 0,
+          autoplay: true,
+          animationData: data,
+        });
+
+        animation.addEventListener("data_failed", () => {
+          setStatus("动画资源加载失败，请检查 JSON 内的图片资源", true);
+        });
+
+        animation.addEventListener("DOMLoaded", () => {
+          setStatus("正在播放");
+          if (options.preserveFrame) {
+            if (wasPlaying) {
+              animation.goToAndPlay(frameToRestore, true);
+              isPlaying = true;
+              setPlayIcon(true);
+            } else {
+              animation.goToAndStop(frameToRestore, true);
+              isPlaying = false;
+              setPlayIcon(false);
+            }
+          }
+          updateFrameProgress();
+          startProgressLoop();
+        });
+
+        animation.addEventListener("complete", () => {
+          const targetLoops = normalizeLoopCount(loopCountNumber.value);
+          if (targetLoops === 0) return;
+
+          completedLoops += 1;
+          if (completedLoops >= targetLoops) {
+            animation.goToAndStop(animation.totalFrames - 1, true);
+            isPlaying = false;
+            setPlayIcon(false);
+            updateFrameProgress();
+            setStatus(`已播放 ${targetLoops} 次`);
+          } else {
+            animation.goToAndPlay(0, true);
+          }
+        });
+
+        animation.setSpeed(Number(speed.value));
+        isPlaying = wasPlaying;
+        completedLoops = 0;
+        setPlayIcon(isPlaying);
+        setControls(true);
+        updateMeta(data);
+        setStatus("动画加载中...");
+        if (!options.skipColorControls) renderColorControls(data);
+      }
+
+      function loadJsonText(text, name = "粘贴的 JSON") {
+        const data = JSON.parse(text);
+        if (!data || !Array.isArray(data.layers)) {
+          throw new Error("这不像 Lottie JSON：没有找到 layers 数组。");
+        }
+
+        fileName.textContent = name;
+        currentFileBaseName = name.replace(/\.json$/i, "").replace(/[^\w.-]+/g, "-") || "animation";
+        selectedLayerIndex = data.layers.length ? 0 : null;
+        renderAnimation(data);
+        renderLayerList();
+      }
+
+      async function loadFile(file) {
+        if (!file) return;
+
+        fileName.textContent = file.name;
+        setStatus("读取文件中...");
+
+        try {
+          const text = await file.text();
+          loadJsonText(text, file.name);
+        } catch (error) {
+          if (animation) animation.destroy();
+          stopProgressLoop();
+          animation = null;
+          currentJson = null;
+          selectedLayerIndex = null;
+          renderLayerList();
+          renderColorControls({ layers: [] });
+          setControls(false);
+          frameProgress.value = "0";
+          frameProgress.max = "0";
+          frameReadout.textContent = "0 / 0 帧";
+          emptyState.style.display = "grid";
+          animationContainer.style.display = "none";
+          animationContainer.innerHTML = "";
+          setStatus(error.message || "文件无法解析", true);
+          meta.innerHTML = `
+            <span><strong>尺寸：</strong>等待文件</span>
+            <span><strong>帧率：</strong>等待文件</span>
+            <span><strong>时长：</strong>等待文件</span>
+          `;
+        }
+      }
+
+      fileInput.addEventListener("change", (event) => {
+        loadFile(event.target.files[0]);
+      });
+
+      ["dragenter", "dragover"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          dropZone.classList.add("dragging");
+        });
+      });
+
+      ["dragleave", "drop"].forEach((eventName) => {
+        dropZone.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          dropZone.classList.remove("dragging");
+        });
+      });
+
+      dropZone.addEventListener("drop", (event) => {
+        const file = event.dataTransfer.files[0];
+        loadFile(file);
+      });
+
+      window.addEventListener("paste", (event) => {
+        const files = Array.from(event.clipboardData?.files || []);
+        const jsonFile = files.find((file) => {
+          return file.type === "application/json" || file.name.toLowerCase().endsWith(".json");
+        });
+
+        if (!jsonFile) {
+          setStatus("剪贴板里没有 JSON 文件", true);
+          return;
+        }
+
+        event.preventDefault();
+        loadFile(jsonFile);
+      });
+
+      bgColor.addEventListener("input", (event) => {
+        updateBackground(event.target.value);
+      });
+
+      bgText.addEventListener("input", (event) => {
+        updateBackground(event.target.value.trim());
+      });
+
+      bgPresets.forEach((button) => {
+        button.addEventListener("click", () => {
+          updateBackground(button.dataset.bg);
+        });
+      });
+
+      speed.addEventListener("input", (event) => {
+        const value = Number(event.target.value);
+        speedValue.textContent = `${value.toFixed(2).replace(/0$/, "").replace(/\.0$/, "")}x`;
+        if (animation) applyPlaybackSettings();
+      });
+
+      loopCount.addEventListener("input", (event) => {
+        updateLoopControls(event.target.value);
+      });
+
+      loopCountNumber.addEventListener("input", (event) => {
+        updateLoopControls(event.target.value);
+      });
+
+      playPause.addEventListener("click", () => {
+        togglePlayback();
+      });
+
+      restart.addEventListener("click", () => {
+        if (!animation) return;
+        completedLoops = 0;
+        animation.goToAndPlay(0, true);
+        isPlaying = true;
+        setPlayIcon(true);
+        setStatus("正在播放");
+      });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.code !== "Space") return;
+
+        const tagName = event.target?.tagName?.toLowerCase();
+        const isTyping =
+          tagName === "input" ||
+          tagName === "textarea" ||
+          tagName === "select" ||
+          event.target?.isContentEditable;
+
+        if (isTyping) return;
+        event.preventDefault();
+        togglePlayback();
+      });
+
+      frameProgress.addEventListener("input", (event) => {
+        if (!animation) return;
+        isSeeking = true;
+        const frame = Number(event.target.value);
+        animation.goToAndStop(frame, true);
+        frameReadout.textContent = `${frame + 1} / ${Math.round(animation.totalFrames || 0)} 帧`;
+      });
+
+      frameProgress.addEventListener("change", (event) => {
+        if (!animation) return;
+        isSeeking = false;
+        const frame = Number(event.target.value);
+        if (isPlaying) {
+          animation.goToAndPlay(frame, true);
+          setPlayIcon(true);
+        } else {
+          animation.goToAndStop(frame, true);
+          setPlayIcon(false);
+        }
+      });
+
+      saveJson.addEventListener("click", () => {
+        if (!currentJson) return;
+
+        const output = JSON.parse(JSON.stringify(currentJson));
+        const background = bgText.value.trim().toLowerCase();
+        if (/^#[0-9a-fA-F]{6}$/.test(background)) {
+          output.bg = background;
+        } else if (background === "transparent" && "bg" in output) {
+          delete output.bg;
+        }
+
+        const speedValueNumber = Number(speed.value);
+        if (Number.isFinite(speedValueNumber) && speedValueNumber > 0 && speedValueNumber !== 1) {
+          output.fr = Number((Number(output.fr || 30) * speedValueNumber).toFixed(3));
+        }
+
+        const blob = new Blob([JSON.stringify(output)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${currentFileBaseName}-configured.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setStatus("已保存配置后的 JSON");
+      });
+
+      function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function waitForAnimationLoaded(instance) {
+        return new Promise((resolve, reject) => {
+          instance.addEventListener("DOMLoaded", resolve);
+          instance.addEventListener("data_failed", () => reject(new Error("GIF 导出时资源加载失败")));
+        });
+      }
+
+      async function exportCurrentGif() {
+        if (!currentJson) return;
+
+        exportGif.disabled = true;
+        setStatus("正在准备 GIF...");
+
+        const width = Number(currentJson.w || 512);
+        const height = Number(currentJson.h || 512);
+        const frameRate = Number(currentJson.fr || 30);
+        const totalFrames = Math.max(1, Math.ceil((currentJson.op || 1) - (currentJson.ip || 0)));
+        const step = Math.max(1, Math.round(frameRate / 15));
+        const delay = Math.max(20, Math.round((1000 / frameRate) * step));
+        const background = bgText.value.trim().toLowerCase();
+        const exportBackground = /^#[0-9a-fA-F]{6}$/.test(background) ? background : "#ffffff";
+
+        const host = document.createElement("div");
+        host.style.position = "fixed";
+        host.style.left = "-10000px";
+        host.style.top = "0";
+        host.style.width = `${width}px`;
+        host.style.height = `${height}px`;
+        document.body.appendChild(host);
+
+        const gif = new GIF({
+          workers: 2,
+          quality: 10,
+          width,
+          height,
+          workerScript: "./gif.worker.js",
+          transparent: null,
+        });
+
+        try {
+          const exportAnimation = lottie.loadAnimation({
+            container: host,
+            renderer: "canvas",
+            loop: false,
+            autoplay: false,
+            animationData: currentJson,
+            rendererSettings: {
+              clearCanvas: true,
+              preserveAspectRatio: "xMidYMid meet",
+            },
+          });
+
+          await waitForAnimationLoaded(exportAnimation);
+          const canvas = host.querySelector("canvas");
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+          for (let frame = currentJson.ip || 0; frame < (currentJson.op || totalFrames); frame += step) {
+            setStatus(`正在导出 GIF：第 ${Math.min(frame + 1, totalFrames)} / ${totalFrames} 帧`);
+            exportAnimation.goToAndStop(frame, true);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            ctx.save();
+            ctx.globalCompositeOperation = "destination-over";
+            ctx.fillStyle = exportBackground;
+            ctx.fillRect(0, 0, width, height);
+            ctx.restore();
+            gif.addFrame(canvas, { copy: true, delay });
+          }
+
+          exportAnimation.destroy();
+
+          const blob = await new Promise((resolve) => {
+            gif.on("finished", resolve);
+            gif.render();
+          });
+
+          downloadBlob(blob, `${currentFileBaseName}.gif`);
+          setStatus("GIF 已导出");
+        } catch (error) {
+          setStatus(error.message || "GIF 导出失败", true);
+        } finally {
+          host.remove();
+          exportGif.disabled = !currentJson;
+        }
+      }
+
+      exportGif.addEventListener("click", exportCurrentGif);
+
+      updateBackground(bgText.value);
+    </script>
+  </body>
+</html>
