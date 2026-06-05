@@ -886,7 +886,7 @@
         </div>
 
         <label class="drop-zone" id="dropZone">
-          <input id="fileInput" type="file" accept=".json,application/json" />
+          <input id="fileInput" type="file" accept=".json,application/json,image/*" multiple />
           <span class="drop-copy">
             <span class="upload-icon" aria-hidden="true">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
@@ -895,7 +895,7 @@
               </svg>
             </span>
             <span class="drop-title">选择、拖入或粘贴 JSON 文件</span>
-            <span class="drop-hint">支持从文件夹复制 JSON 文件后，在此页面直接粘贴导入。</span>
+            <span class="drop-hint">含图片素材时，可把 JSON 和图片一起选择或拖入。</span>
           </span>
         </label>
 
@@ -1830,8 +1830,77 @@
         if (!options.skipColorControls) renderColorControls(data);
       }
 
-      function loadJsonText(text, name = "粘贴的 JSON") {
-        const data = JSON.parse(text);
+      function isJsonFile(file) {
+        return file?.type === "application/json" || file?.name?.toLowerCase().endsWith(".json");
+      }
+
+      function isImageFile(file) {
+        return file?.type?.startsWith("image/") || /\.(apng|avif|gif|jpe?g|png|svg|webp)$/i.test(file?.name || "");
+      }
+
+      function normalizeAssetKey(value) {
+        return String(value || "")
+          .replace(/\\/g, "/")
+          .replace(/^\.?\//, "")
+          .replace(/\/+/g, "/")
+          .toLowerCase();
+      }
+
+      function assetFileName(value) {
+        return normalizeAssetKey(value).split("/").pop();
+      }
+
+      function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.addEventListener("load", () => resolve(reader.result));
+          reader.addEventListener("error", () => reject(reader.error || new Error("图片素材读取失败")));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function buildImageFileMap(files) {
+        const entries = await Promise.all(
+          files.filter(isImageFile).map(async (file) => {
+            const dataUrl = await readFileAsDataUrl(file);
+            const keys = new Set([normalizeAssetKey(file.name)]);
+            if (file.webkitRelativePath) keys.add(normalizeAssetKey(file.webkitRelativePath));
+            return [...keys].map((key) => [key, dataUrl]);
+          }),
+        );
+        return new Map(entries.flat());
+      }
+
+      function isExternalImageAsset(asset) {
+        if (!asset || asset.e || asset.layers || !asset.p) return false;
+        return !/^(data:|blob:|https?:)/i.test(asset.p);
+      }
+
+      function externalImageAssets(data) {
+        return (data.assets || []).filter(isExternalImageAsset);
+      }
+
+      async function inlineImageAssets(data, files) {
+        const imageMap = await buildImageFileMap(files);
+        if (!imageMap.size) return 0;
+
+        let inlinedCount = 0;
+        externalImageAssets(data).forEach((asset) => {
+          const combinedKey = normalizeAssetKey(`${asset.u || ""}${asset.p || ""}`);
+          const nameKey = assetFileName(asset.p);
+          const dataUrl = imageMap.get(combinedKey) || imageMap.get(nameKey);
+          if (!dataUrl) return;
+
+          asset.u = "";
+          asset.p = dataUrl;
+          asset.e = 1;
+          inlinedCount += 1;
+        });
+
+        return inlinedCount;
+      }
+
+      function loadJsonData(data, name = "粘贴的 JSON") {
         if (!data || !Array.isArray(data.layers)) {
           throw new Error("这不像 Lottie JSON：没有找到 layers 数组。");
         }
@@ -1843,15 +1912,23 @@
         renderLayerList();
       }
 
-      async function loadFile(file) {
-        if (!file) return;
+      async function loadFiles(files) {
+        const fileList = Array.from(files || []);
+        const jsonFile = fileList.find(isJsonFile);
+        if (!jsonFile) return;
 
-        fileName.textContent = file.name;
+        fileName.textContent = jsonFile.name;
         setStatus("读取文件中...");
 
         try {
-          const text = await file.text();
-          loadJsonText(text, file.name);
+          const text = await jsonFile.text();
+          const data = JSON.parse(text);
+          const inlinedCount = await inlineImageAssets(
+            data,
+            fileList.filter((file) => file !== jsonFile),
+          );
+          loadJsonData(data, jsonFile.name);
+          if (inlinedCount > 0) setStatus(`已嵌入 ${inlinedCount} 个图片素材`);
         } catch (error) {
           if (animation) animation.destroy();
           stopProgressLoop();
@@ -1877,7 +1954,7 @@
       }
 
       fileInput.addEventListener("change", (event) => {
-        loadFile(event.target.files[0]);
+        loadFiles(event.target.files);
       });
 
       ["dragenter", "dragover"].forEach((eventName) => {
@@ -1895,8 +1972,7 @@
       });
 
       dropZone.addEventListener("drop", (event) => {
-        const file = event.dataTransfer.files[0];
-        loadFile(file);
+        loadFiles(event.dataTransfer.files);
       });
 
       window.addEventListener("paste", (event) => {
@@ -1911,7 +1987,7 @@
         }
 
         event.preventDefault();
-        loadFile(jsonFile);
+        loadFiles(files);
       });
 
       bgColor.addEventListener("input", (event) => {
@@ -2037,8 +2113,197 @@
         });
       }
 
+      function makeAbsoluteUrl(url) {
+        return new URL(url, document.baseURI).href;
+      }
+
+      class IframeGifWorker {
+        constructor(scriptUrl) {
+          this.onmessage = null;
+          this.onerror = null;
+          this._terminated = false;
+
+          this._iframe = document.createElement("iframe");
+          this._iframe.hidden = true;
+          this._iframe.tabIndex = -1;
+          this._iframe.title = "GIF worker";
+          this._iframe.setAttribute("aria-hidden", "true");
+          this._iframe.style.cssText =
+            "position:absolute;width:0;height:0;border:0;left:-9999px;top:-9999px;";
+
+          this._ready = new Promise((resolve, reject) => {
+            this._resolveReady = resolve;
+            this._rejectReady = reject;
+          });
+
+          document.body.appendChild(this._iframe);
+          const workerWindow = this._iframe.contentWindow;
+          const workerDocument = this._iframe.contentDocument;
+
+          const installPostMessageBridge = () => {
+            workerWindow.postMessage = (data) => {
+              if (this._terminated) return;
+              setTimeout(() => {
+                if (!this._terminated) this.onmessage?.({ data });
+              }, 0);
+            };
+          };
+
+          installPostMessageBridge();
+          workerDocument.open();
+          workerDocument.write("<!doctype html><html><head></head><body></body></html>");
+          workerDocument.close();
+          installPostMessageBridge();
+
+          const script = workerDocument.createElement("script");
+          script.src = makeAbsoluteUrl(scriptUrl);
+          script.onload = () => this._resolveReady();
+          script.onerror = () => {
+            const error = new Error("无法加载 GIF Worker 脚本");
+            this._rejectReady(error);
+            this._reportError(error);
+          };
+          workerDocument.body.appendChild(script);
+        }
+
+        _reportError(error) {
+          if (this._terminated) return;
+          this.onerror?.(error);
+          window.dispatchEvent(new CustomEvent("gif-worker-fallback-error", { detail: error }));
+        }
+
+        postMessage(data) {
+          if (this._terminated) return;
+
+          this._ready
+            .then(() => {
+              if (this._terminated) return;
+              const workerWindow = this._iframe?.contentWindow;
+              const handler = workerWindow?.onmessage;
+              if (typeof handler !== "function") {
+                throw new Error("GIF Worker 初始化失败");
+              }
+              setTimeout(() => {
+                if (this._terminated) return;
+                try {
+                  handler.call(workerWindow, { data });
+                } catch (error) {
+                  this._reportError(error);
+                }
+              }, 0);
+            })
+            .catch((error) => {
+              this._reportError(error);
+            });
+        }
+
+        terminate() {
+          this._terminated = true;
+          this._iframe?.remove();
+          this._iframe = null;
+        }
+      }
+
+      function shouldUseGifWorkerFallback() {
+        return typeof Worker === "undefined" || window.location.protocol === "file:";
+      }
+
+      function withGifWorkerRuntime(callback) {
+        if (!shouldUseGifWorkerFallback()) return callback();
+
+        const NativeWorker = window.Worker;
+        window.Worker = IframeGifWorker;
+        try {
+          return callback();
+        } finally {
+          window.Worker = NativeWorker;
+        }
+      }
+
+      function disposeGifWorkers(gif) {
+        [...(gif.freeWorkers || []), ...(gif.activeWorkers || [])].forEach((worker) => {
+          worker.terminate?.();
+        });
+        gif.freeWorkers = [];
+        gif.activeWorkers = [];
+      }
+
+      function renderGif(gif) {
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          const onWorkerError = (event) => {
+            fail(event.detail || new Error("GIF Worker 执行失败"));
+          };
+
+          const finish = (blob) => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("gif-worker-fallback-error", onWorkerError);
+            disposeGifWorkers(gif);
+            resolve(blob);
+          };
+
+          const fail = (error) => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener("gif-worker-fallback-error", onWorkerError);
+            disposeGifWorkers(gif);
+            reject(error);
+          };
+
+          window.addEventListener("gif-worker-fallback-error", onWorkerError);
+          gif.on("finished", finish);
+          gif.on("abort", () => fail(new Error("GIF 导出已取消")));
+
+          try {
+            withGifWorkerRuntime(() => gif.render());
+          } catch (error) {
+            fail(error);
+          }
+        });
+      }
+
+      // GIF only supports binary transparency; ordered dithering approximates alpha.
+      function applyGifAlphaDither(ctx, width, height, transparentKey) {
+        const imageData = ctx.getImageData(0, 0, width, height);
+        const pixels = imageData.data;
+        const bayer8 = [
+          0, 128, 32, 160, 8, 136, 40, 168,
+          192, 64, 224, 96, 200, 72, 232, 104,
+          48, 176, 16, 144, 56, 184, 24, 152,
+          240, 112, 208, 80, 248, 120, 216, 88,
+          12, 140, 44, 172, 4, 132, 36, 164,
+          204, 76, 236, 108, 196, 68, 228, 100,
+          60, 188, 28, 156, 52, 180, 20, 148,
+          252, 124, 220, 92, 244, 116, 212, 84,
+        ];
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const i = (y * width + x) * 4;
+            const alpha = pixels[i + 3];
+            const threshold = bayer8[(y % 8) * 8 + (x % 8)];
+
+            if (alpha === 0 || alpha <= threshold) {
+              pixels[i] = transparentKey.r;
+              pixels[i + 1] = transparentKey.g;
+              pixels[i + 2] = transparentKey.b;
+            }
+
+            pixels[i + 3] = 255;
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+      }
+
       async function exportCurrentGif() {
         if (!currentJson) return;
+
+        if (window.location.protocol === "file:" && externalImageAssets(currentJson).length) {
+          setStatus("GIF 含未嵌入图片素材，请把 JSON 和图片一起选择或拖入后再导出", true);
+          return;
+        }
 
         exportGif.disabled = true;
         setStatus("正在准备 GIF...");
@@ -2050,6 +2315,9 @@
         const step = Math.max(1, Math.round(frameRate / 15));
         const delay = Math.max(20, Math.round((1000 / frameRate) * step));
         const background = bgText.value.trim().toLowerCase();
+        const transparentExport = background === "transparent";
+        // Keep this key away from the white/gray artwork and non-neon if a decoder leaks it.
+        const transparentKey = { r: 35, g: 37, b: 36, color: 0x232524 };
         const exportBackground = /^#[0-9a-fA-F]{6}$/.test(background) ? background : "#ffffff";
 
         const host = document.createElement("div");
@@ -2062,15 +2330,17 @@
 
         const gif = new GIF({
           workers: 2,
-          quality: 10,
+          quality: 1,
           width,
           height,
           workerScript: "./gif.worker.js",
-          transparent: null,
+          transparent: transparentExport ? transparentKey.color : null,
         });
 
+        let exportAnimation = null;
+
         try {
-          const exportAnimation = lottie.loadAnimation({
+          exportAnimation = lottie.loadAnimation({
             container: host,
             renderer: "canvas",
             loop: false,
@@ -2078,38 +2348,45 @@
             animationData: currentJson,
             rendererSettings: {
               clearCanvas: true,
+              dpr: 1,
               preserveAspectRatio: "xMidYMid meet",
             },
           });
 
           await waitForAnimationLoaded(exportAnimation);
           const canvas = host.querySelector("canvas");
-          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          const frameCanvas = document.createElement("canvas");
+          frameCanvas.width = width;
+          frameCanvas.height = height;
+          const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
 
           for (let frame = currentJson.ip || 0; frame < (currentJson.op || totalFrames); frame += step) {
             setStatus(`正在导出 GIF：第 ${Math.min(frame + 1, totalFrames)} / ${totalFrames} 帧`);
             exportAnimation.goToAndStop(frame, true);
             await new Promise((resolve) => requestAnimationFrame(resolve));
-            ctx.save();
-            ctx.globalCompositeOperation = "destination-over";
-            ctx.fillStyle = exportBackground;
-            ctx.fillRect(0, 0, width, height);
-            ctx.restore();
-            gif.addFrame(canvas, { copy: true, delay });
+            frameCtx.clearRect(0, 0, width, height);
+            if (!transparentExport) {
+              frameCtx.fillStyle = exportBackground;
+              frameCtx.fillRect(0, 0, width, height);
+            }
+            frameCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, width, height);
+            if (transparentExport) {
+              applyGifAlphaDither(frameCtx, width, height, transparentKey);
+            }
+            gif.addFrame(frameCtx, { copy: true, delay });
           }
 
           exportAnimation.destroy();
+          exportAnimation = null;
 
-          const blob = await new Promise((resolve) => {
-            gif.on("finished", resolve);
-            gif.render();
-          });
+          const blob = await renderGif(gif);
 
           downloadBlob(blob, `${currentFileBaseName}.gif`);
-          setStatus("GIF 已导出");
+          setStatus(transparentExport ? "透明 GIF 已导出，半透明已用点阵近似" : "GIF 已导出");
         } catch (error) {
           setStatus(error.message || "GIF 导出失败", true);
         } finally {
+          exportAnimation?.destroy();
           host.remove();
           exportGif.disabled = !currentJson;
         }
