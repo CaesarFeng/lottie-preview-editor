@@ -2263,28 +2263,24 @@
         });
       }
 
-      // GIF only supports binary transparency; ordered dithering approximates alpha.
-      function applyGifAlphaDither(ctx, width, height, transparentKey) {
+      function applyDenseGifAlphaDither(ctx, width, height, transparentKey) {
         const imageData = ctx.getImageData(0, 0, width, height);
         const pixels = imageData.data;
-        const bayer8 = [
-          0, 128, 32, 160, 8, 136, 40, 168,
-          192, 64, 224, 96, 200, 72, 232, 104,
-          48, 176, 16, 144, 56, 184, 24, 152,
-          240, 112, 208, 80, 248, 120, 216, 88,
-          12, 140, 44, 172, 4, 132, 36, 164,
-          204, 76, 236, 108, 196, 68, 228, 100,
-          60, 188, 28, 156, 52, 180, 20, 148,
-          252, 124, 220, 92, 244, 116, 212, 84,
+        const bayer4 = [
+          0, 128, 32, 160,
+          192, 64, 224, 96,
+          48, 176, 16, 144,
+          240, 112, 208, 80,
         ];
 
         for (let y = 0; y < height; y += 1) {
           for (let x = 0; x < width; x += 1) {
             const i = (y * width + x) * 4;
             const alpha = pixels[i + 3];
-            const threshold = bayer8[(y % 8) * 8 + (x % 8)];
+            const boostedAlpha = Math.min(255, Math.round(alpha * 1.35));
+            const threshold = bayer4[(y % 4) * 4 + (x % 4)];
 
-            if (alpha === 0 || alpha <= threshold) {
+            if (boostedAlpha <= threshold) {
               pixels[i] = transparentKey.r;
               pixels[i + 1] = transparentKey.g;
               pixels[i + 2] = transparentKey.b;
@@ -2310,29 +2306,31 @@
 
         const width = Number(currentJson.w || 512);
         const height = Number(currentJson.h || 512);
+        const exportScale = 2;
+        const exportWidth = width * exportScale;
+        const exportHeight = height * exportScale;
         const frameRate = Number(currentJson.fr || 30);
         const totalFrames = Math.max(1, Math.ceil((currentJson.op || 1) - (currentJson.ip || 0)));
         const step = Math.max(1, Math.round(frameRate / 15));
         const delay = Math.max(20, Math.round((1000 / frameRate) * step));
         const background = bgText.value.trim().toLowerCase();
         const transparentExport = background === "transparent";
-        // Keep this key away from the white/gray artwork and non-neon if a decoder leaks it.
-        const transparentKey = { r: 35, g: 37, b: 36, color: 0x232524 };
+        const transparentKey = { r: 0, g: 255, b: 0, color: 0x00ff00 };
         const exportBackground = /^#[0-9a-fA-F]{6}$/.test(background) ? background : "#ffffff";
 
         const host = document.createElement("div");
         host.style.position = "fixed";
         host.style.left = "-10000px";
         host.style.top = "0";
-        host.style.width = `${width}px`;
-        host.style.height = `${height}px`;
+        host.style.width = `${exportWidth}px`;
+        host.style.height = `${exportHeight}px`;
         document.body.appendChild(host);
 
         const gif = new GIF({
           workers: 2,
           quality: 1,
-          width,
-          height,
+          width: exportWidth,
+          height: exportHeight,
           workerScript: "./gif.worker.js",
           transparent: transparentExport ? transparentKey.color : null,
         });
@@ -2348,7 +2346,7 @@
             animationData: currentJson,
             rendererSettings: {
               clearCanvas: true,
-              dpr: 1,
+              dpr: exportScale,
               preserveAspectRatio: "xMidYMid meet",
             },
           });
@@ -2356,22 +2354,23 @@
           await waitForAnimationLoaded(exportAnimation);
           const canvas = host.querySelector("canvas");
           const frameCanvas = document.createElement("canvas");
-          frameCanvas.width = width;
-          frameCanvas.height = height;
+          frameCanvas.width = exportWidth;
+          frameCanvas.height = exportHeight;
           const frameCtx = frameCanvas.getContext("2d", { willReadFrequently: true });
 
           for (let frame = currentJson.ip || 0; frame < (currentJson.op || totalFrames); frame += step) {
             setStatus(`正在导出 GIF：第 ${Math.min(frame + 1, totalFrames)} / ${totalFrames} 帧`);
             exportAnimation.goToAndStop(frame, true);
             await new Promise((resolve) => requestAnimationFrame(resolve));
-            frameCtx.clearRect(0, 0, width, height);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            frameCtx.clearRect(0, 0, exportWidth, exportHeight);
             if (!transparentExport) {
               frameCtx.fillStyle = exportBackground;
-              frameCtx.fillRect(0, 0, width, height);
+              frameCtx.fillRect(0, 0, exportWidth, exportHeight);
             }
-            frameCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, width, height);
+            frameCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, exportWidth, exportHeight);
             if (transparentExport) {
-              applyGifAlphaDither(frameCtx, width, height, transparentKey);
+              applyDenseGifAlphaDither(frameCtx, exportWidth, exportHeight, transparentKey);
             }
             gif.addFrame(frameCtx, { copy: true, delay });
           }
@@ -2382,7 +2381,7 @@
           const blob = await renderGif(gif);
 
           downloadBlob(blob, `${currentFileBaseName}.gif`);
-          setStatus(transparentExport ? "透明 GIF 已导出，半透明已用点阵近似" : "GIF 已导出");
+          setStatus(transparentExport ? "透明 GIF 已导出" : "GIF 已导出");
         } catch (error) {
           setStatus(error.message || "GIF 导出失败", true);
         } finally {
